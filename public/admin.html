@@ -115,6 +115,7 @@
                 adminNumberText.textContent = data.number;
                 updateTimestamp(data.last_updated);
               }
+              startPolling();
               connectWS();
             } else {
               loginHint.textContent = data.error || '密码错误';
@@ -132,7 +133,36 @@
       loginBtn.addEventListener('click', doLogin);
       passwordInput.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
-      // ========== WebSocket ==========
+      // ========== WebSocket（带自动重连 + HTTP 轮询兜底）==========
+      let pollTimer = null;
+      let wsConnected = false;
+
+      function startPolling() {
+        if (pollTimer) return;
+        fetch('/api/number?queue=' + queueId)
+          .then(r => r.json())
+          .then(data => {
+            adminNumberText.textContent = data.number;
+            updateTimestamp(data.last_updated);
+          })
+          .catch(() => {});
+        pollTimer = setInterval(() => {
+          fetch('/api/number?queue=' + queueId)
+            .then(r => r.json())
+            .then(data => {
+              if (!wsConnected) {
+                adminNumberText.textContent = data.number;
+                updateTimestamp(data.last_updated);
+              }
+            })
+            .catch(() => {});
+        }, 3000);
+      }
+
+      function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      }
+
       function connectWS() {
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(protocol + '//' + location.host + '/ws');
@@ -147,6 +177,8 @@
             const msg = JSON.parse(event.data);
 
             if (msg.type === 'auth_ok') {
+              wsConnected = true;
+              stopPolling();
               adminStatus.textContent = cityName + ' · 已接管控制';
               adminStatus.style.color = '#27ae60';
               if (msg.number !== undefined) {
@@ -167,9 +199,17 @@
         };
 
         ws.onclose = () => {
-          adminStatus.textContent = '连接断开，请刷新页面重连';
+          wsConnected = false;
+          adminStatus.textContent = '连接断开，自动重连中...';
           adminStatus.style.color = '#e74c3c';
+          startPolling();
+          // 3 秒后自动重连
+          setTimeout(() => {
+            if (!wsConnected) connectWS();
+          }, 3000);
         };
+
+        ws.onerror = () => { ws.close(); };
       }
 
       function animateAdminNumber(num) {
@@ -198,7 +238,7 @@
       // ========== 操作 ==========
       function sendCmd(cmd) {
         if (!ws || ws.readyState !== 1) {
-          alert('连接已断开，请刷新页面');
+          alert('连接暂不可用，正在自动重连，请稍后再试');
           return;
         }
         ws.send(JSON.stringify({ ...cmd, queue: queueId }));

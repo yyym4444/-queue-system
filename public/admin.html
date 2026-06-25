@@ -91,6 +91,7 @@
 
       let ws = null;
       let adminToken = null;
+      let savedPassword = null;  // 记住密码，token失效时自动重新登录
 
       // ========== 登录 ==========
       function doLogin() {
@@ -109,6 +110,7 @@
           .then(data => {
             if (data.ok) {
               adminToken = data.token;
+              savedPassword = pw;   // 记住密码用于自动重连
               loginOverlay.style.display = 'none';
               adminPanel.style.display = 'flex';
               if (data.number !== undefined) {
@@ -133,9 +135,11 @@
       loginBtn.addEventListener('click', doLogin);
       passwordInput.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
-      // ========== WebSocket（带自动重连 + HTTP 轮询兜底）==========
+      // ========== WebSocket（带自动重连 + HTTP 轮询兜底 + token 自动刷新）==========
       let pollTimer = null;
       let wsConnected = false;
+      let reconnectAttempts = 0;
+      let reLoginInProgress = false;
 
       function startPolling() {
         if (pollTimer) return;
@@ -178,6 +182,7 @@
 
             if (msg.type === 'auth_ok') {
               wsConnected = true;
+              reconnectAttempts = 0;
               stopPolling();
               adminStatus.textContent = cityName + ' · 已接管控制';
               adminStatus.style.color = '#27ae60';
@@ -186,8 +191,10 @@
                 updateTimestamp(msg.last_updated);
               }
             } else if (msg.type === 'auth_err') {
-              adminStatus.textContent = '认证失败，请刷新重试';
-              adminStatus.style.color = '#e74c3c';
+              // token 失效（如服务器重启），自动重新登录
+              adminStatus.textContent = 'Token 过期，自动重新登录...';
+              adminStatus.style.color = '#e67e22';
+              reLogin();
             } else if (msg.type === 'number' && msg.queue === queueId) {
               animateAdminNumber(msg.number);
               updateTimestamp(msg.last_updated);
@@ -200,16 +207,56 @@
 
         ws.onclose = () => {
           wsConnected = false;
+          if (reLoginInProgress) return;  // reLogin 正在处理，不重复触发
           adminStatus.textContent = '连接断开，自动重连中...';
           adminStatus.style.color = '#e74c3c';
           startPolling();
-          // 3 秒后自动重连
-          setTimeout(() => {
-            if (!wsConnected) connectWS();
-          }, 3000);
+          reconnectAttempts++;
+          if (reconnectAttempts >= 5) {
+            reconnectAttempts = 0;
+            reLogin();
+          } else {
+            setTimeout(() => {
+              if (!wsConnected) connectWS();
+            }, 3000);
+          }
         };
 
         ws.onerror = () => { ws.close(); };
+      }
+
+      // 自动重新登录（token 失效后静默刷新）
+      function reLogin() {
+        if (!savedPassword || reLoginInProgress) {
+          adminStatus.textContent = '认证失败，请刷新页面重新登录';
+          adminStatus.style.color = '#e74c3c';
+          return;
+        }
+        reLoginInProgress = true;
+        adminStatus.textContent = '正在自动重新登录...';
+        fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: savedPassword, queue: queueId }),
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.ok) {
+              adminToken = data.token;
+              adminStatus.textContent = '已重新登录，正在连接...';
+              reconnectAttempts = 0;
+              reLoginInProgress = false;
+              connectWS();
+            } else {
+              reLoginInProgress = false;
+              adminStatus.textContent = '自动登录失败，请刷新页面';
+              adminStatus.style.color = '#e74c3c';
+            }
+          })
+          .catch(() => {
+            reLoginInProgress = false;
+            setTimeout(() => { if (!wsConnected) reLogin(); }, 5000);
+          });
       }
 
       function animateAdminNumber(num) {

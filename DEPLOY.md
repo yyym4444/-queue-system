@@ -135,22 +135,22 @@ nginx -t && systemctl reload nginx
 【郑州】
   公众大屏: http://X.X.X.X:3000/?queue=1
   管理后台: http://X.X.X.X:3000/admin?queue=1
-  密码: admin888
+  密码: 请设置你自己的密码
 
 【上海】
   公众大屏: http://X.X.X.X:3000/?queue=2
   管理后台: http://X.X.X.X:3000/admin?queue=2
-  密码: admin888
+  密码: 请设置你自己的密码
 
 【成都】
   公众大屏: http://X.X.X.X:3000/?queue=3
   管理后台: http://X.X.X.X:3000/admin?queue=3
-  密码: admin888
+  密码: 请设置你自己的密码
 
 【广州】
   公众大屏: http://X.X.X.X:3000/?queue=4
   管理后台: http://X.X.X.X:3000/admin?queue=4
-  密码: admin888
+  密码: 请设置你自己的密码
 
 【总部监控】
   监控总览: http://X.X.X.X:3000/monitor

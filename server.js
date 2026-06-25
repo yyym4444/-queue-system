@@ -8,7 +8,7 @@ const { WebSocketServer } = require('ws');
 //  配置
 // ============================================================
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin888';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const STATE_FILE = path.join(__dirname, 'state.json');
 
 // 持久化当前叫号数字

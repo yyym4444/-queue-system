@@ -11,7 +11,7 @@ Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
 Environment=PORT=3000
-Environment=ADMIN_PASSWORD=admin888
+Environment=ADMIN_PASSWORD=CHANGE_ME
 Environment=ADMIN_PW_1=
 Environment=ADMIN_PW_2=
 Environment=ADMIN_PW_3=

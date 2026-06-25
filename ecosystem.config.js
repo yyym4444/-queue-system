@@ -8,7 +8,7 @@ module.exports = {
       exec_mode: 'cluster',
       env: {
         PORT: 3000,
-        ADMIN_PASSWORD: 'admin888',
+        ADMIN_PASSWORD: 'CHANGE_ME',
       },
       // 自动重启保护
       max_memory_restart: '512M',

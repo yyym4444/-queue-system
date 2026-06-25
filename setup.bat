@@ -50,7 +50,7 @@ echo        → 访问 http://localhost:3000
 echo        → PM2 集群模式，利用多核 CPU
 echo.
 echo   管理页面: http://localhost:3000/admin
-echo   默认密码: admin888
+echo   密码: 请通过环境变量 ADMIN_PASSWORD 设置
 echo.
 echo   修改密码: set ADMIN_PASSWORD=你的密码
 echo.

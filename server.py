@@ -22,7 +22,7 @@ QUEUE_NAMES = {"1": "郑州", "2": "上海", "3": "成都", "4": "广州"}
 # 每城独立管理密码（默认统一，可选单独覆盖）
 def _pw(q):
     key = f"ADMIN_PW_{q}"
-    return os.environ.get(key) or os.environ.get("ADMIN_PASSWORD", "admin888")
+    return os.environ.get(key) or os.environ.get("ADMIN_PASSWORD", "")
 QUEUE_PASSWORDS = {q: _pw(q) for q in QUEUE_IDS}
 
 # ============================================================

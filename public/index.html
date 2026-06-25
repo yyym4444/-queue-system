@@ -67,17 +67,46 @@
       const cityColors = {'1':'#c0392b','2':'#c0392b','3':'#c0392b','4':'#c0392b'};
 
       let ws = null;
+      let wsConnected = false;
       let reconnectTimer = null;
+      let pollTimer = null;
       let staleTimer = null;
 
+      // ===== HTTP 轮询兜底：即使 WebSocket 不稳定也能显示数字 =====
+      function startPolling() {
+        if (pollTimer) return;
+        poll();
+        pollTimer = setInterval(poll, 3000);
+      }
+
+      function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      }
+
+      function poll() {
+        fetch('/api/number?queue=' + queueId)
+          .then(r => r.json())
+          .then(data => {
+            if (!wsConnected) {
+              animateNumber(data.number);
+              updateTimestamp(data.last_updated);
+              statusDot.className = 'status-dot connected';
+              statusLabel.textContent = '已连接 · 轮询模式';
+            }
+          })
+          .catch(() => {});
+      }
+
+      // ===== WebSocket 连接 =====
       function connect() {
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(protocol + '//' + location.host + '/ws');
 
         ws.onopen = () => {
+          wsConnected = true;
+          stopPolling();
           statusDot.className = 'status-dot connected';
           statusLabel.textContent = '已连接 · 实时更新';
-          // 订阅所属队列
           ws.send(JSON.stringify({ type: 'subscribe', queue: queueId }));
           if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
         };
@@ -85,7 +114,6 @@
         ws.onmessage = (event) => {
           try {
             const msg = JSON.parse(event.data);
-
             if (msg.type === 'number' && msg.queue === queueId) {
               animateNumber(msg.number);
               updateTimestamp(msg.last_updated);
@@ -94,8 +122,10 @@
         };
 
         ws.onclose = () => {
+          wsConnected = false;
           statusDot.className = 'status-dot disconnected';
-          statusLabel.textContent = '连接断开，重连中...';
+          statusLabel.textContent = 'WebSocket断开，轮询中...';
+          startPolling();
           scheduleReconnect();
         };
 
@@ -104,7 +134,7 @@
 
       function scheduleReconnect() {
         if (reconnectTimer) return;
-        reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 2000);
+        reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 3000);
       }
 
       function animateNumber(num) {
@@ -164,6 +194,8 @@
         }
       });
 
+      // 启动：先 HTTP 轮询立刻显示数字，WebSocket 连上后自动切换为实时推送
+      startPolling();
       connect();
     })();
   </script>

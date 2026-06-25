@@ -21,7 +21,7 @@
   <div class="container admin" id="adminPanel" style="display:none">
     <header>
       <h1 id="adminCityName">--</h1>
-      <p class="subtitle" id="adminStatus">已连接</p>
+      <p class="subtitle" id="adminStatus">正在连接...</p>
     </header>
 
     <main>
@@ -171,9 +171,17 @@
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(protocol + '//' + location.host + '/ws');
 
+        // 超时检测：5 秒内没收到 auth_ok 就重连
+        let authTimer = null;
+
         ws.onopen = () => {
           ws.send(JSON.stringify({ type: 'auth', token: adminToken, queue: queueId }));
           adminStatus.textContent = '认证中...';
+          authTimer = setTimeout(() => {
+            if (!wsConnected) {
+              try { ws.close(); } catch(e) {}
+            }
+          }, 5000);
         };
 
         ws.onmessage = (event) => {
@@ -181,6 +189,7 @@
             const msg = JSON.parse(event.data);
 
             if (msg.type === 'auth_ok') {
+              clearTimeout(authTimer);
               wsConnected = true;
               reconnectAttempts = 0;
               stopPolling();
@@ -191,6 +200,7 @@
                 updateTimestamp(msg.last_updated);
               }
             } else if (msg.type === 'auth_err') {
+              clearTimeout(authTimer);
               // token 失效（如服务器重启），自动重新登录
               adminStatus.textContent = 'Token 过期，自动重新登录...';
               adminStatus.style.color = '#e67e22';
@@ -206,6 +216,7 @@
         };
 
         ws.onclose = () => {
+          clearTimeout(authTimer);
           wsConnected = false;
           if (reLoginInProgress) return;  // reLogin 正在处理，不重复触发
           adminStatus.textContent = '连接断开，自动重连中...';
@@ -284,11 +295,11 @@
 
       // ========== 操作（带防连点保护）==========
       let lastCmdTime = 0;
-      const CMD_GAP = 300; // 300ms 内禁止连续发送
+      const CMD_GAP = 200; // 200ms 内禁止连续发送
 
       function sendCmd(cmd) {
-        if (!ws || ws.readyState !== 1) {
-          alert('连接暂不可用，正在自动重连，请稍后再试');
+        if (!wsConnected || !ws || ws.readyState !== 1) {
+          alert('尚未完成认证接管，请等待上方状态变为"' + cityName + ' · 已接管控制"后再操作');
           return;
         }
         const now = Date.now();

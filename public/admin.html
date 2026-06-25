@@ -299,7 +299,22 @@
 
       function sendCmd(cmd) {
         if (!wsConnected || !ws || ws.readyState !== 1) {
-          alert('尚未完成认证接管，请等待上方状态变为"' + cityName + ' · 已接管控制"后再操作');
+          // WebSocket 未就绪，走 HTTP 兜底
+          cmd.token = adminToken;
+          cmd.queue = queueId;
+          fetch('/api/admin/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cmd),
+          })
+            .then(r => r.json())
+            .then(data => {
+              if (data.ok && data.number !== undefined) {
+                adminNumberText.textContent = data.number;
+                updateTimestamp(data.last_updated);
+              }
+            })
+            .catch(() => {});
           return;
         }
         const now = Date.now();

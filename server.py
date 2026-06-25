@@ -163,6 +163,50 @@ async def api_admin_login(request: web.Request):
         "last_updated": qd["last_updated"],
     })
 
+async def api_admin_control(request: web.Request):
+    """管理员 HTTP 控制操作 — WebSocket 不稳定时的兜底通道"""
+    try:
+        body = await request.json()
+    except Exception:
+        raise web.HTTPBadRequest(text="Bad Request")
+
+    q = body.get("queue", "1")
+    if q not in QUEUE_IDS:
+        return web.json_response({"ok": False, "error": "无效队列"}, status=400)
+
+    token = body.get("token", "")
+    st = admin_state[q]
+    if not st["token"] or token != st["token"]:
+        return web.json_response({"ok": False, "error": "认证失败"}, status=403)
+
+    msg_type = body.get("type", "")
+    changed = False
+    if msg_type == "inc":
+        queues_data[q]["number"] += 1
+        changed = True
+    elif msg_type == "dec" and queues_data[q]["number"] > 0:
+        queues_data[q]["number"] -= 1
+        changed = True
+    elif msg_type == "set":
+        n = body.get("number")
+        if isinstance(n, int) and n >= 0:
+            queues_data[q]["number"] = n
+            changed = True
+    elif msg_type == "reset":
+        queues_data[q]["number"] = 0
+        changed = True
+
+    if changed:
+        queues_data[q]["last_updated"] = int(time.time())
+        save_all(queues_data)
+        asyncio.create_task(broadcast_queue(q))
+        return web.json_response({
+            "ok": True, "queue": q, "number": queues_data[q]["number"],
+            "last_updated": queues_data[q]["last_updated"],
+        })
+
+    return web.json_response({"ok": False, "error": "无效操作或号码未变"})
+
 # ============================================================
 #  WebSocket
 # ============================================================
@@ -327,6 +371,7 @@ def main():
     app.router.add_get("/api/number", api_get_number)
     app.router.add_get("/api/all", api_get_all)
     app.router.add_post("/api/admin/login", api_admin_login)
+    app.router.add_post("/api/admin/control", api_admin_control)
     app.router.add_get("/ws", ws_handler)
 
     async def start_heartbeat(app):

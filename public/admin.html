@@ -2,9 +2,24 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>叫号管理</title>
   <link rel="stylesheet" href="/style.css">
+  <style>
+    /* ===== 手机优先：超大按钮、清晰状态 ===== */
+    .ctrl-btn { padding: 18px 24px; font-size: 18px; border-radius: 16px; min-width: 90px; }
+    .next-btn { font-size: 22px; padding: 20px 40px; }
+    .admin-controls { gap: 16px; margin-top: 32px; }
+    .quick-jump { margin-top: 24px; gap: 14px; }
+    .quick-jump input { width: 140px; padding: 16px 20px; font-size: 18px; border-radius: 16px; }
+    .jump-btn { padding: 16px 28px; font-size: 16px; }
+    .admin .number-display { width: 160px; height: 160px; }
+    .admin .number-display .number-text { font-size: 56px; }
+    .admin-queue-name { font-size: 16px; margin-top: 16px; }
+    .status-simple { text-align: center; font-size: 13px; color: #888; margin-top: 8px; letter-spacing: 1px; }
+  </style>
 </head>
 <body>
   <!-- ========== 登录遮罩 ========== -->
@@ -21,7 +36,7 @@
   <div class="container admin" id="adminPanel" style="display:none">
     <header>
       <h1 id="adminCityName">--</h1>
-      <p class="subtitle" id="adminStatus">正在连接...</p>
+      <p class="subtitle" id="adminStatus">加载中...</p>
     </header>
 
     <main>
@@ -38,7 +53,10 @@
         <span id="updateTimeText">--</span>
       </div>
 
-      <!-- 控制按钮 -->
+      <!-- 简单状态 — 手机用户只需要知道"能不能操作" -->
+      <div class="status-simple" id="statusSimple"></div>
+
+      <!-- 控制按钮 — 超大尺寸适配手指 -->
       <div class="admin-controls">
         <button class="ctrl-btn dec-btn" id="decBtn">- 叫号</button>
         <button class="ctrl-btn next-btn" id="nextBtn">+ 下一号</button>
@@ -47,8 +65,8 @@
 
       <!-- 快速跳转 -->
       <div class="quick-jump">
-        <input type="number" id="jumpInput" placeholder="输入号码" min="0">
-        <button class="ctrl-btn jump-btn" id="jumpBtn">跳 转</button>
+        <input type="number" id="jumpInput" placeholder="输入号码" min="0" inputmode="numeric" pattern="[0-9]*">
+        <button class="ctrl-btn jump-btn" id="jumpBtn">跳转</button>
       </div>
     </main>
   </div>
@@ -56,15 +74,15 @@
   <script>
     (function () {
       const QUEUE_NAMES = { '1': '郑州', '2': '上海', '3': '成都', '4': '广州' };
+      const STORAGE_KEY = 'qs_token_v2';  // localStorage key
 
       // 从 URL 获取队列
       const params = new URLSearchParams(location.search);
       let queueId = params.get('queue') || '1';
       if (!QUEUE_NAMES[queueId]) queueId = '1';
-
       const cityName = QUEUE_NAMES[queueId];
 
-      // DOM
+      // ===== DOM =====
       const loginTitle = document.getElementById('loginTitle');
       const loginOverlay = document.getElementById('loginOverlay');
       const passwordInput = document.getElementById('passwordInput');
@@ -76,6 +94,7 @@
       const adminQueueName = document.getElementById('adminQueueName');
       const adminNumberText = document.getElementById('adminNumberText');
       const updateTimeText = document.getElementById('updateTimeText');
+      const statusSimple = document.getElementById('statusSimple');
       const decBtn = document.getElementById('decBtn');
       const nextBtn = document.getElementById('nextBtn');
       const resetBtn = document.getElementById('resetBtn');
@@ -89,15 +108,47 @@
       passwordInput.placeholder = '请输入' + cityName + '管理密码';
       document.title = cityName + ' - 叫号管理';
 
-      let ws = null;
+      // ===== 状态 =====
       let adminToken = null;
-      let savedPassword = null;  // 记住密码，token失效时自动重新登录
+      let savedPassword = null;
+      let ws = null;
+      let wsReady = false;
+      let pollTimer = null;
+      let lastCmdTime = 0;
 
-      // ========== 登录 ==========
+      // ===== 初始化：尝试从 localStorage 恢复登录 =====
+      function tryRestore() {
+        const saved = localStorage.getItem(STORAGE_KEY + '_' + queueId);
+        if (!saved) return false;
+        try {
+          const data = JSON.parse(saved);
+          if (data.token && data.password) {
+            adminToken = data.token;
+            savedPassword = data.password;
+            loginOverlay.style.display = 'none';
+            adminPanel.style.display = 'flex';
+            adminStatus.textContent = cityName + ' · 已登录';
+            adminStatus.style.color = '#27ae60';
+            updateWebButtons(true);
+            startPolling();
+            startWebSocket();
+            return true;
+          }
+        } catch(e) {}
+        return false;
+      }
+
+      // 保存登录到 localStorage
+      function saveLogin(token, pw) {
+        localStorage.setItem(STORAGE_KEY + '_' + queueId, JSON.stringify({
+          token: token, password: pw, time: Date.now()
+        }));
+      }
+
+      // ===== 登录 =====
       function doLogin() {
         const pw = passwordInput.value.trim();
         if (!pw) return;
-
         loginHint.textContent = '验证中...';
         loginHint.style.color = '#888';
 
@@ -110,15 +161,19 @@
           .then(data => {
             if (data.ok) {
               adminToken = data.token;
-              savedPassword = pw;   // 记住密码用于自动重连
+              savedPassword = pw;
+              saveLogin(data.token, pw);
               loginOverlay.style.display = 'none';
               adminPanel.style.display = 'flex';
               if (data.number !== undefined) {
                 adminNumberText.textContent = data.number;
                 updateTimestamp(data.last_updated);
               }
+              adminStatus.textContent = cityName + ' · 已登录';
+              adminStatus.style.color = '#27ae60';
+              updateWebButtons(true);
               startPolling();
-              connectWS();
+              startWebSocket();
             } else {
               loginHint.textContent = data.error || '密码错误';
               loginHint.style.color = '#e74c3c';
@@ -135,116 +190,82 @@
       loginBtn.addEventListener('click', doLogin);
       passwordInput.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
-      // ========== WebSocket（带自动重连 + HTTP 轮询兜底 + token 自动刷新）==========
-      let pollTimer = null;
-      let wsConnected = false;
-      let reconnectAttempts = 0;
-      let reLoginInProgress = false;
-
+      // ===== HTTP 轮询 — 始终运行，2 秒获取最新号码 =====
       function startPolling() {
-        if (pollTimer) return;
-        fetch('/api/number?queue=' + queueId)
-          .then(r => r.json())
-          .then(data => {
-            adminNumberText.textContent = data.number;
-            updateTimestamp(data.last_updated);
-          })
-          .catch(() => {});
-        pollTimer = setInterval(() => {
-          fetch('/api/number?queue=' + queueId)
-            .then(r => r.json())
-            .then(data => {
-              if (!wsConnected) {
-                adminNumberText.textContent = data.number;
-                updateTimestamp(data.last_updated);
-              }
-            })
-            .catch(() => {});
-        }, 3000);
+        stopPolling();
+        pollNumber();
+        pollTimer = setInterval(pollNumber, 2000);
       }
 
       function stopPolling() {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       }
 
-      function connectWS() {
+      function pollNumber() {
+        fetch('/api/number?queue=' + queueId)
+          .then(r => r.json())
+          .then(data => {
+            animateAdminNumber(data.number);
+            updateTimestamp(data.last_updated);
+            if (wsReady) {
+              statusSimple.textContent = '实时连接中';
+            } else {
+              statusSimple.textContent = '轮询模式';
+            }
+          })
+          .catch(() => { statusSimple.textContent = '获取中...'; });
+      }
+
+      // ===== WebSocket — 可选，连上后有实时推送 =====
+      function startWebSocket() {
+        try { ws.close(); } catch(e) {}
+        wsReady = false;
+
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(protocol + '//' + location.host + '/ws');
 
-        // 超时检测：5 秒内没收到 auth_ok 就重连
-        let authTimer = null;
-
         ws.onopen = () => {
           ws.send(JSON.stringify({ type: 'auth', token: adminToken, queue: queueId }));
-          adminStatus.textContent = '认证中...';
-          authTimer = setTimeout(() => {
-            if (!wsConnected) {
-              try { ws.close(); } catch(e) {}
-            }
-          }, 5000);
         };
 
         ws.onmessage = (event) => {
           try {
             const msg = JSON.parse(event.data);
-
             if (msg.type === 'auth_ok') {
-              clearTimeout(authTimer);
-              wsConnected = true;
-              reconnectAttempts = 0;
-              stopPolling();
-              adminStatus.textContent = cityName + ' · 已接管控制';
-              adminStatus.style.color = '#27ae60';
-              if (msg.number !== undefined) {
-                adminNumberText.textContent = msg.number;
-                updateTimestamp(msg.last_updated);
-              }
+              wsReady = true;
+              statusSimple.textContent = '实时连接中';
             } else if (msg.type === 'auth_err') {
-              clearTimeout(authTimer);
-              // token 失效（如服务器重启），自动重新登录
-              adminStatus.textContent = 'Token 过期，自动重新登录...';
-              adminStatus.style.color = '#e67e22';
+              wsReady = false;
+              // token 失效，静默重新登录
+              ws.close();
               reLogin();
             } else if (msg.type === 'number' && msg.queue === queueId) {
               animateAdminNumber(msg.number);
               updateTimestamp(msg.last_updated);
+              statusSimple.textContent = '实时连接中';
             } else if (msg.type === 'kicked') {
-              alert(msg.reason || '控制权已被接管，页面将刷新');
+              alert(msg.reason || '控制权已被接管');
               location.reload();
             }
           } catch {}
         };
 
         ws.onclose = () => {
-          clearTimeout(authTimer);
-          wsConnected = false;
-          if (reLoginInProgress) return;  // reLogin 正在处理，不重复触发
-          adminStatus.textContent = '连接断开，自动重连中...';
-          adminStatus.style.color = '#e74c3c';
-          startPolling();
-          reconnectAttempts++;
-          if (reconnectAttempts >= 5) {
-            reconnectAttempts = 0;
-            reLogin();
-          } else {
-            setTimeout(() => {
-              if (!wsConnected) connectWS();
-            }, 3000);
-          }
+          wsReady = false;
+          statusSimple.textContent = '轮询模式';
+          // 5 秒后尝试重连
+          setTimeout(() => {
+            if (!wsReady) startWebSocket();
+          }, 5000);
         };
-
-        ws.onerror = () => { ws.close(); };
       }
 
-      // 自动重新登录（token 失效后静默刷新）
       function reLogin() {
-        if (!savedPassword || reLoginInProgress) {
-          adminStatus.textContent = '认证失败，请刷新页面重新登录';
-          adminStatus.style.color = '#e74c3c';
+        if (!savedPassword) {
+          localStorage.removeItem(STORAGE_KEY + '_' + queueId);
+          location.reload();
           return;
         }
-        reLoginInProgress = true;
-        adminStatus.textContent = '正在自动重新登录...';
         fetch('/api/admin/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -254,104 +275,106 @@
           .then(data => {
             if (data.ok) {
               adminToken = data.token;
-              adminStatus.textContent = '已重新登录，正在连接...';
-              reconnectAttempts = 0;
-              reLoginInProgress = false;
-              connectWS();
+              saveLogin(data.token, savedPassword);
+              startWebSocket();
             } else {
-              reLoginInProgress = false;
-              adminStatus.textContent = '自动登录失败，请刷新页面';
-              adminStatus.style.color = '#e74c3c';
+              localStorage.removeItem(STORAGE_KEY + '_' + queueId);
+              location.reload();
             }
           })
           .catch(() => {
-            reLoginInProgress = false;
-            setTimeout(() => { if (!wsConnected) reLogin(); }, 5000);
+            setTimeout(reLogin, 3000);
           });
       }
 
-      function animateAdminNumber(num) {
-        const el = adminNumberText;
-        el.style.transform = 'scale(0.2)';
-        el.style.opacity = '0';
-        setTimeout(() => {
-          el.textContent = String(num);
-          el.style.transform = 'scale(1.2)';
-          el.style.opacity = '1';
-          setTimeout(() => { el.style.transform = 'scale(1)'; }, 150);
-        }, 150);
+      // ===== UI 辅助 =====
+      function updateWebButtons(ready) {
+        // 按钮始终可用（走 HTTP），只是视觉上区分
+        const btns = [decBtn, nextBtn, resetBtn, jumpBtn];
+        btns.forEach(b => { if (b) b.style.opacity = ready ? '1' : '0.7'; });
       }
 
       function updateTimestamp(ts) {
-        if (!ts) {
-          updateTimeText.textContent = '暂无记录';
-          return;
-        }
+        if (!ts) { updateTimeText.textContent = '暂无记录'; return; }
         const d = new Date(ts * 1000);
         const pad = n => String(n).padStart(2, '0');
-        updateTimeText.textContent =
-          pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        updateTimeText.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
       }
 
-      // ========== 操作（带防连点保护）==========
-      let lastCmdTime = 0;
-      const CMD_GAP = 200; // 200ms 内禁止连续发送
+      function animateAdminNumber(num) {
+        const old = adminNumberText.textContent;
+        if (old === String(num)) return;
+        adminNumberText.textContent = num;
+      }
 
+      // ===== 核心操作 — 始终走 HTTP =====
       function sendCmd(cmd) {
-        if (!wsConnected || !ws || ws.readyState !== 1) {
-          // WebSocket 未就绪，走 HTTP 兜底
-          cmd.token = adminToken;
-          cmd.queue = queueId;
-          fetch('/api/admin/control', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(cmd),
-          })
-            .then(r => r.json())
-            .then(data => {
-              if (data.ok && data.number !== undefined) {
-                adminNumberText.textContent = data.number;
-                updateTimestamp(data.last_updated);
-              }
-            })
-            .catch(() => {});
-          return;
-        }
         const now = Date.now();
-        if (now - lastCmdTime < CMD_GAP) return;
+        if (now - lastCmdTime < 200) return;  // 防连点
         lastCmdTime = now;
-        ws.send(JSON.stringify({ ...cmd, queue: queueId }));
+
+        // 乐观更新：先改本地显示
+        if (cmd.type === 'inc') adminNumberText.textContent = parseInt(adminNumberText.textContent || 0) + 1;
+        else if (cmd.type === 'dec') adminNumberText.textContent = Math.max(0, parseInt(adminNumberText.textContent || 0) - 1);
+        else if (cmd.type === 'reset') adminNumberText.textContent = 0;
+
+        // HTTP 请求
+        fetch('/api/admin/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: adminToken, queue: queueId, type: cmd.type, number: cmd.number }),
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.ok) {
+              adminNumberText.textContent = data.number;
+              updateTimestamp(data.last_updated);
+              statusSimple.textContent = '操作成功';
+              setTimeout(() => { statusSimple.textContent = wsReady ? '实时连接中' : '轮询模式'; }, 800);
+            } else if (data.error === '认证失败') {
+              reLogin();
+            } else {
+              statusSimple.textContent = '操作失败，请重试';
+              // 回滚到服务器数据
+              fetch('/api/number?queue=' + queueId).then(r => r.json()).then(d => {
+                adminNumberText.textContent = d.number;
+                updateTimestamp(d.last_updated);
+              });
+            }
+          })
+          .catch(() => {
+            statusSimple.textContent = '网络错误，正在重试...';
+            // 1 秒后重试
+            setTimeout(() => sendCmd(cmd), 1000);
+          });
       }
 
       nextBtn.addEventListener('click', () => sendCmd({ type: 'inc' }));
       decBtn.addEventListener('click', () => sendCmd({ type: 'dec' }));
       resetBtn.addEventListener('click', () => {
-        if (confirm('确定要将 ' + cityName + ' 重置为 0 吗？')) {
-          sendCmd({ type: 'reset' });
-        }
+        if (confirm('确定要将 ' + cityName + ' 重置为 0 吗？')) sendCmd({ type: 'reset' });
       });
-
       jumpBtn.addEventListener('click', () => {
         const n = parseInt(jumpInput.value, 10);
-        if (isNaN(n) || n < 0) { alert('请输入有效数字（>=0）'); return; }
+        if (isNaN(n) || n < 0) { alert('请输入有效数字（≥0）'); return; }
         sendCmd({ type: 'set', number: n });
         jumpInput.value = '';
       });
       jumpInput.addEventListener('keydown', e => { if (e.key === 'Enter') jumpBtn.click(); });
 
-      // ========== 快捷键 ==========
-      document.addEventListener('keydown', (e) => {
-        if (loginOverlay.style.display !== 'none') return;
-        if (e.target.tagName === 'INPUT') return;
-        if (e.key === 'ArrowRight' || e.key === ' ') {
-          e.preventDefault(); sendCmd({ type: 'inc' });
-        } else if (e.key === 'ArrowLeft') {
-          e.preventDefault(); sendCmd({ type: 'dec' });
-        } else if (e.key === 'r' && e.ctrlKey) {
-          e.preventDefault();
-          if (confirm('确定要将 ' + cityName + ' 重置为 0 吗？')) sendCmd({ type: 'reset' });
+      // ===== 页面可见性 =====
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          pollNumber();  // 回到前台立刻刷新
+          if (!wsReady) startWebSocket();
         }
       });
+
+      // ===== 启动 =====
+      if (!tryRestore()) {
+        // 未恢复，显示登录页
+        loginOverlay.style.display = 'flex';
+      }
     })();
   </script>
 </body>

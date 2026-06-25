@@ -52,50 +52,22 @@
     (function () {
       const statusDot = document.getElementById('statusDot');
       const statusLabel = document.getElementById('statusLabel');
-
-      let ws = null;
-      let reconnectTimer = null;
       const staleTimers = {};
 
-      function connect() {
-        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(protocol + '//' + location.host + '/ws');
-
-        ws.onopen = () => {
-          statusDot.className = 'status-dot connected';
-          statusLabel.textContent = '已连接 · 实时监控';
-          ws.send(JSON.stringify({ type: 'subscribe', queue: 'all' }));
-          if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(event.data);
-
-            if (msg.type === 'number') {
-              updateCard(msg.queue, msg.number, msg.last_updated);
+      function fetchAll() {
+        fetch('/api/all')
+          .then(r => r.json())
+          .then(data => {
+            for (const [q, info] of Object.entries(data)) {
+              updateCard(q, info.number, info.last_updated);
             }
-
-            if (msg.type === 'all_numbers') {
-              for (const [q, info] of Object.entries(msg.queues)) {
-                updateCard(q, info.number, info.last_updated);
-              }
-            }
-          } catch {}
-        };
-
-        ws.onclose = () => {
-          statusDot.className = 'status-dot disconnected';
-          statusLabel.textContent = '连接断开，重连中...';
-          scheduleReconnect();
-        };
-
-        ws.onerror = () => { ws.close(); };
-      }
-
-      function scheduleReconnect() {
-        if (reconnectTimer) return;
-        reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 2000);
+            statusDot.className = 'status-dot connected';
+            statusLabel.textContent = '已连接 · 实时监控';
+          })
+          .catch(() => {
+            statusDot.className = 'status-dot disconnected';
+            statusLabel.textContent = '连接中断，重试中...';
+          });
       }
 
       function updateCard(q, num, ts) {
@@ -106,8 +78,6 @@
           const d = new Date(ts * 1000);
           const pad = n => String(n).padStart(2, '0');
           timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-
-          // 过期高亮
           const card = timeEl.closest('.queue-mini-card');
           const age = (Date.now() / 1000) - ts;
           clearTimeout(staleTimers[q]);
@@ -116,20 +86,14 @@
           } else {
             card.classList.remove('stale-card');
             staleTimers[q] = setTimeout(() => {
-              const age2 = (Date.now() / 1000) - ts;
-              if (age2 > 300) card.classList.add('stale-card');
+              if ((Date.now() / 1000) - ts > 300) card.classList.add('stale-card');
             }, (301 - age) * 1000);
           }
         }
       }
 
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-          if (!ws || ws.readyState > 1) connect();
-        }
-      });
-
-      connect();
+      fetchAll();
+      setInterval(fetchAll, 2000);
     })();
   </script>
 </body>

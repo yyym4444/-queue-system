@@ -172,8 +172,8 @@ header h1 {
 }
 
 .number-display {
-  width: 240px;
-  height: 240px;
+  width: 180px;
+  height: 180px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -218,7 +218,7 @@ header h1 {
 }
 
 .number-text {
-  font-size: 88px;
+  font-size: 64px;
   font-weight: 900;
   color: var(--white);
   text-shadow:
@@ -442,12 +442,12 @@ footer p::after {
 }
 
 .admin .number-display {
-  width: 180px;
-  height: 180px;
+  width: 150px;
+  height: 150px;
 }
 
 .admin .number-display .number-text {
-  font-size: 64px;
+  font-size: 52px;
 }
 
 /* 队列名随选中变化 */
@@ -677,44 +677,13 @@ footer p::after {
 }
 
 /* ============================================================
-   响应式
+   响应式 — 极小屏适配（240px宽老手机）
    ============================================================ */
-@media (max-width: 480px) {
-  .number-display {
-    width: 180px;
-    height: 180px;
-    box-shadow: 0 8px 32px rgba(192, 57, 43, 0.35), 0 0 0 8px var(--white), 0 0 0 11px var(--pink-light);
-  }
-  .number-text { font-size: 64px; }
-
-  .number-stage::before { inset: -14px; }
-  .number-stage::after { inset: -26px; }
-
-  header h1 { font-size: 22px; }
-  header::after { width: 40px; height: 2px; }
-
-  .all-queues { gap: 14px; }
-  .queue-mini-card { padding: 18px 10px 12px; }
-  .queue-mini-card .mini-number { width: 60px; height: 60px; }
-  .queue-mini-card .mini-number span { font-size: 26px; }
-
-  .ctrl-btn { padding: 11px 18px; font-size: 13px; }
-
-  .admin .number-display { width: 140px; height: 140px; }
-  .admin .number-display .number-text { font-size: 48px; }
-}
-
-/* ============================================================
-   大屏优化（叫号大屏 / 电视投屏）
-   ============================================================ */
-@media (min-width: 1200px) {
-  .container { max-width: 800px; }
-  .number-display { width: 360px; height: 360px; }
-  .number-text { font-size: 140px; }
-  header h1 { font-size: 40px; }
-  .number-stage::before { inset: -28px; }
-  .number-stage::after { inset: -48px; }
-  .all-queues { grid-template-columns: repeat(4, 1fr); max-width: 800px; }
+@media (max-width: 360px) {
+  .number-display { width: 150px; height: 150px; }
+  .number-text { font-size: 52px; }
+  header h1 { font-size: 20px; }
+  .ctrl-btn { padding: 14px 16px; font-size: 15px; }
 }
 
 /* ============================================================

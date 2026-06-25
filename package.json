@@ -1,0 +1,18 @@
+{
+  "name": "queue-system",
+  "version": "1.0.0",
+  "description": "在线叫号系统 — 红白粉黑主题",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop queue-system",
+    "pm2:restart": "pm2 restart queue-system"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "pm2": "^5.4.0"
+  }
+}

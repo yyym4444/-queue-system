@@ -1,0 +1,735 @@
+/* ============================================================
+   叫号系统 — 红·白·粉·黑 主题 | 多队列版
+   视觉层次丰富：渐变背景 · 几何装饰 · 光晕 · 毛玻璃
+   ============================================================ */
+
+:root {
+  --red: #c0392b;
+  --red-deep: #8b1a1a;
+  --red-dark: #96281b;
+  --red-light: #e74c3c;
+  --red-glow: #ff6b6b;
+  --pink: #e8a0bf;
+  --pink-mid: #d4879e;
+  --pink-light: #f9d8e6;
+  --pink-lighter: #fdf2f6;
+  --white: #ffffff;
+  --off-white: #faf8f6;
+  --black: #1a1a1a;
+  --black-soft: #2d2d2d;
+  --gray: #6b6b6b;
+  --gray-light: #d4d0cc;
+  --radius: 20px;
+  --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ============================================================
+   背景 — 多层次纹理
+   ============================================================ */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  background:
+    /* 顶部渐变条纹 */
+    linear-gradient(180deg, var(--pink-lighter) 0%, var(--off-white) 30%, var(--white) 100%),
+    /* 微妙网格 */
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 40px,
+      rgba(192, 57, 43, 0.015) 40px,
+      rgba(192, 57, 43, 0.015) 41px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 40px,
+      rgba(192, 57, 43, 0.015) 40px,
+      rgba(192, 57, 43, 0.015) 41px
+    );
+  color: var(--black);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* 背景装饰 — 大圆环 */
+body::before {
+  content: "";
+  position: fixed;
+  top: -30%;
+  right: -15%;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232, 160, 191, 0.15) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  bottom: -20%;
+  left: -10%;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(192, 57, 43, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ============================================================
+   容器
+   ============================================================ */
+.container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 580px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+/* ============================================================
+   头部
+   ============================================================ */
+header {
+  text-align: center;
+  margin-bottom: 32px;
+  position: relative;
+}
+
+/* 头部装饰线 */
+header::after {
+  content: "";
+  display: block;
+  width: 60px;
+  height: 3px;
+  margin: 16px auto 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--red), var(--pink));
+}
+
+header h1 {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--black);
+  letter-spacing: 4px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--gray);
+  margin-top: 8px;
+  letter-spacing: 2px;
+}
+
+/* 队列标签选择器 — 在 monitor 页无需使用，样式保留备用 */
+
+/* ============================================================
+   数字展示 — 圆形徽章
+   ============================================================ */
+.number-stage {
+  position: relative;
+  margin: 0 auto;
+}
+
+/* 外圈光晕环 1 */
+.number-stage::before {
+  content: "";
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  border: 2px dashed rgba(192, 57, 43, 0.12);
+  animation: rotate-ring 30s linear infinite;
+  pointer-events: none;
+}
+
+/* 外圈光晕环 2 */
+.number-stage::after {
+  content: "";
+  position: absolute;
+  inset: -35px;
+  border-radius: 50%;
+  border: 1px solid rgba(232, 160, 191, 0.2);
+  animation: rotate-ring 20s linear infinite reverse;
+  pointer-events: none;
+}
+
+@keyframes rotate-ring {
+  to { transform: rotate(360deg); }
+}
+
+.number-display {
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+
+  /* 主体渐变：深红 → 红 → 粉 */
+  background: linear-gradient(145deg, var(--red-deep) 0%, var(--red) 25%, var(--red-light) 55%, var(--pink) 100%);
+  box-shadow:
+    /* 内发光 */
+    inset 0 2px 24px rgba(255, 255, 255, 0.15),
+    /* 主体投影 */
+    0 12px 48px rgba(192, 57, 43, 0.4),
+    0 0 0 10px var(--white),
+    0 0 0 14px var(--pink-light),
+    /* 最外层粉色光晕 */
+    0 0 80px rgba(232, 160, 191, 0.25);
+  transition: box-shadow var(--transition);
+}
+
+/* 数字高亮时脉冲光晕 */
+.number-display.pulse {
+  box-shadow:
+    inset 0 2px 24px rgba(255, 255, 255, 0.2),
+    0 12px 56px rgba(231, 76, 60, 0.55),
+    0 0 0 10px var(--white),
+    0 0 0 14px var(--pink-light),
+    0 0 100px rgba(255, 107, 107, 0.5);
+}
+
+/* 数字顶部高光 */
+.number-display::after {
+  content: "";
+  position: absolute;
+  top: 16%;
+  left: 22%;
+  width: 55%;
+  height: 35%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.number-text {
+  font-size: 88px;
+  font-weight: 900;
+  color: var(--white);
+  text-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 0 40px rgba(255, 255, 255, 0.2);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.2s ease;
+  user-select: none;
+  line-height: 1;
+  z-index: 1;
+}
+
+/* ============================================================
+   窗口名称标签
+   ============================================================ */
+.queue-label {
+  margin-top: 20px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--red);
+  letter-spacing: 3px;
+  text-align: center;
+  background: var(--pink-lighter);
+  display: inline-block;
+  padding: 6px 20px;
+  border-radius: 20px;
+}
+
+/* ============================================================
+   最后更新时间
+   ============================================================ */
+.update-time {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--gray);
+  letter-spacing: 1px;
+  transition: color 0.3s;
+}
+
+.update-time span:last-child {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  letter-spacing: 0;
+}
+
+/* 超过 5 分钟未更新 — 警示色 */
+.update-time.stale {
+  color: var(--red-light);
+  animation: blink-stale 2s ease-in-out infinite;
+}
+
+@keyframes blink-stale {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ============================================================
+   监控页卡片内时间
+   ============================================================ */
+.queue-mini-card .mini-time {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--gray);
+  font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  letter-spacing: 0;
+}
+
+/* 过期卡片红框警示 */
+.queue-mini-card.stale-card {
+  box-shadow: 0 0 0 2px var(--red-light), 0 4px 24px rgba(231, 76, 60, 0.15);
+}
+
+.queue-mini-card.stale-card .mini-time {
+  color: var(--red-light);
+}
+
+/* ============================================================
+   全部队列卡片视图（queue=all）
+   ============================================================ */
+.all-queues {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.queue-mini-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 24px 16px 16px;
+  text-align: center;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.06),
+    0 1px 4px rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.queue-mini-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 36px rgba(0, 0, 0, 0.1);
+}
+
+/* 卡片顶部色条 */
+.queue-mini-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--red), var(--pink));
+}
+
+.queue-mini-card .mini-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--black-soft);
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+
+.queue-mini-card .mini-number {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  background: linear-gradient(135deg, var(--red) 0%, var(--pink) 100%);
+  box-shadow: 0 4px 20px rgba(192, 57, 43, 0.3);
+}
+
+.queue-mini-card .mini-number span {
+  font-size: 34px;
+  font-weight: 900;
+  color: var(--white);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================================
+   状态栏
+   ============================================================ */
+.status-bar {
+  margin-top: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--gray-light);
+  transition: all var(--transition);
+}
+
+.status-dot.connected {
+  background: #27ae60;
+  box-shadow: 0 0 12px rgba(39, 174, 96, 0.5);
+}
+
+.status-dot.disconnected {
+  background: var(--red-light);
+  animation: blink-dot 1s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(231, 76, 60, 0.5);
+}
+
+@keyframes blink-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.status-label {
+  font-size: 13px;
+  color: var(--gray);
+  letter-spacing: 1px;
+}
+
+/* ============================================================
+   底部
+   ============================================================ */
+footer {
+  margin-top: 40px;
+  text-align: center;
+}
+
+footer p {
+  font-size: 13px;
+  color: var(--gray);
+  letter-spacing: 2px;
+  position: relative;
+}
+
+/* 底部装饰 */
+footer p::before,
+footer p::after {
+  content: "·";
+  color: var(--pink);
+  margin: 0 8px;
+}
+
+/* 管理面板 Tab 栏 — 已移除此组件，每城独立管理页 */
+
+/* ============================================================
+   管理页面数字展示（比观看页略小）
+   ============================================================ */
+.admin .number-stage::before,
+.admin .number-stage::after {
+  display: none;
+}
+
+.admin .number-display {
+  width: 180px;
+  height: 180px;
+}
+
+.admin .number-display .number-text {
+  font-size: 64px;
+}
+
+/* 队列名随选中变化 */
+.admin-queue-name {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--red);
+  letter-spacing: 2px;
+  margin-top: 14px;
+}
+
+/* ============================================================
+   管理按钮
+   ============================================================ */
+.admin-controls {
+  margin-top: 28px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.ctrl-btn {
+  padding: 13px 26px;
+  border: none;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 2px;
+  transition: all 0.2s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 按钮点击波纹 */
+.ctrl-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(255,255,255,0.3) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.ctrl-btn:active::after {
+  opacity: 1;
+}
+
+.ctrl-btn:active {
+  transform: scale(0.95);
+}
+
+.next-btn {
+  background: linear-gradient(135deg, var(--red), var(--red-light));
+  color: var(--white);
+  box-shadow: 0 6px 24px rgba(192, 57, 43, 0.35);
+}
+
+.next-btn:hover {
+  box-shadow: 0 8px 32px rgba(231, 76, 60, 0.45);
+  transform: translateY(-2px);
+}
+
+.dec-btn {
+  background: var(--black-soft);
+  color: var(--white);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.dec-btn:hover {
+  background: var(--black);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  transform: translateY(-2px);
+}
+
+.reset-btn {
+  background: var(--white);
+  color: var(--red);
+  border: 2px solid var(--pink);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.reset-btn:hover {
+  background: var(--pink-lighter);
+  border-color: var(--red-light);
+  transform: translateY(-2px);
+}
+
+/* — 快速跳转 — */
+.quick-jump {
+  margin-top: 18px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.quick-jump input {
+  width: 120px;
+  padding: 12px 16px;
+  border: 2px solid var(--pink-light);
+  border-radius: 14px;
+  font-size: 16px;
+  text-align: center;
+  outline: none;
+  transition: border-color var(--transition);
+  color: var(--black);
+  background: var(--white);
+}
+
+.quick-jump input:focus {
+  border-color: var(--pink);
+}
+
+.jump-btn {
+  background: var(--pink);
+  color: var(--black-soft);
+  font-size: 14px;
+  padding: 12px 22px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(232, 160, 191, 0.3);
+}
+
+.jump-btn:hover {
+  background: var(--pink-light);
+  transform: translateY(-2px);
+}
+
+/* ============================================================
+   登录遮罩
+   ============================================================ */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 26, 26, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+}
+
+.login-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 44px 40px;
+  width: 360px;
+  max-width: 90vw;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 登录卡片顶部装饰 */
+.login-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--red), var(--pink));
+}
+
+.login-card h2 {
+  font-size: 24px;
+  color: var(--black);
+  margin-bottom: 28px;
+  letter-spacing: 4px;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 15px 20px;
+  border: 2px solid var(--pink-light);
+  border-radius: 14px;
+  font-size: 16px;
+  text-align: center;
+  outline: none;
+  margin-bottom: 18px;
+  transition: border-color var(--transition);
+  letter-spacing: 6px;
+  background: var(--off-white);
+}
+
+.login-card input:focus {
+  border-color: var(--pink);
+  background: var(--white);
+}
+
+.login-card button {
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(135deg, var(--red), var(--red-light));
+  color: var(--white);
+  border: none;
+  border-radius: 14px;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 6px;
+  transition: all var(--transition);
+  box-shadow: 0 6px 24px rgba(192, 57, 43, 0.3);
+}
+
+.login-card button:hover {
+  box-shadow: 0 8px 32px rgba(231, 76, 60, 0.4);
+  transform: translateY(-1px);
+}
+
+.login-card button:active {
+  transform: scale(0.97);
+}
+
+.login-hint {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--gray);
+  min-height: 20px;
+  letter-spacing: 1px;
+}
+
+/* ============================================================
+   响应式
+   ============================================================ */
+@media (max-width: 480px) {
+  .number-display {
+    width: 180px;
+    height: 180px;
+    box-shadow: 0 8px 32px rgba(192, 57, 43, 0.35), 0 0 0 8px var(--white), 0 0 0 11px var(--pink-light);
+  }
+  .number-text { font-size: 64px; }
+
+  .number-stage::before { inset: -14px; }
+  .number-stage::after { inset: -26px; }
+
+  header h1 { font-size: 22px; }
+  header::after { width: 40px; height: 2px; }
+
+  .all-queues { gap: 14px; }
+  .queue-mini-card { padding: 18px 10px 12px; }
+  .queue-mini-card .mini-number { width: 60px; height: 60px; }
+  .queue-mini-card .mini-number span { font-size: 26px; }
+
+  .ctrl-btn { padding: 11px 18px; font-size: 13px; }
+
+  .admin .number-display { width: 140px; height: 140px; }
+  .admin .number-display .number-text { font-size: 48px; }
+}
+
+/* ============================================================
+   大屏优化（叫号大屏 / 电视投屏）
+   ============================================================ */
+@media (min-width: 1200px) {
+  .container { max-width: 800px; }
+  .number-display { width: 360px; height: 360px; }
+  .number-text { font-size: 140px; }
+  header h1 { font-size: 40px; }
+  .number-stage::before { inset: -28px; }
+  .number-stage::after { inset: -48px; }
+  .all-queues { grid-template-columns: repeat(4, 1fr); max-width: 800px; }
+}
+
+/* ============================================================
+   加载过渡
+   ============================================================ */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.container {
+  animation: fade-in-up 0.6s ease-out both;
+}
+
+.all-queues .queue-mini-card:nth-child(1) { animation-delay: 0.05s; }
+.all-queues .queue-mini-card:nth-child(2) { animation-delay: 0.1s; }
+.all-queues .queue-mini-card:nth-child(3) { animation-delay: 0.15s; }
+.all-queues .queue-mini-card:nth-child(4) { animation-delay: 0.2s; }

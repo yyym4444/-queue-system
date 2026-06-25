@@ -1,0 +1,21 @@
+[Unit]
+Description=Queue System - 四城在线叫号服务
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/queue-system
+ExecStart=/usr/bin/python3 /opt/queue-system/server.py
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+Environment=PORT=3000
+Environment=ADMIN_PASSWORD=admin888
+Environment=ADMIN_PW_1=
+Environment=ADMIN_PW_2=
+Environment=ADMIN_PW_3=
+Environment=ADMIN_PW_4=
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>叫号管理</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- ========== 登录遮罩 ========== -->
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-card">
+      <h2 id="loginTitle">管理员登录</h2>
+      <input type="password" id="passwordInput" placeholder="请输入管理密码" autofocus>
+      <button id="loginBtn">登 录</button>
+      <p class="login-hint" id="loginHint"></p>
+    </div>
+  </div>
+
+  <!-- ========== 管理面板 ========== -->
+  <div class="container admin" id="adminPanel" style="display:none">
+    <header>
+      <h1 id="adminCityName">--</h1>
+      <p class="subtitle" id="adminStatus">已连接</p>
+    </header>
+
+    <main>
+      <div class="number-stage">
+        <div class="number-display admin-number">
+          <span class="number-text" id="adminNumberText">--</span>
+        </div>
+      </div>
+      <div class="admin-queue-name" id="adminQueueName">--</div>
+
+      <!-- 更新时间 -->
+      <div class="update-time" id="updateTimeBlock">
+        <span>最后更新：</span>
+        <span id="updateTimeText">--</span>
+      </div>
+
+      <!-- 控制按钮 -->
+      <div class="admin-controls">
+        <button class="ctrl-btn dec-btn" id="decBtn">- 叫号</button>
+        <button class="ctrl-btn next-btn" id="nextBtn">+ 下一号</button>
+        <button class="ctrl-btn reset-btn" id="resetBtn">重置</button>
+      </div>
+
+      <!-- 快速跳转 -->
+      <div class="quick-jump">
+        <input type="number" id="jumpInput" placeholder="输入号码" min="0">
+        <button class="ctrl-btn jump-btn" id="jumpBtn">跳 转</button>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      const QUEUE_NAMES = { '1': '郑州', '2': '上海', '3': '成都', '4': '广州' };
+
+      // 从 URL 获取队列
+      const params = new URLSearchParams(location.search);
+      let queueId = params.get('queue') || '1';
+      if (!QUEUE_NAMES[queueId]) queueId = '1';
+
+      const cityName = QUEUE_NAMES[queueId];
+
+      // DOM
+      const loginTitle = document.getElementById('loginTitle');
+      const loginOverlay = document.getElementById('loginOverlay');
+      const passwordInput = document.getElementById('passwordInput');
+      const loginBtn = document.getElementById('loginBtn');
+      const loginHint = document.getElementById('loginHint');
+      const adminPanel = document.getElementById('adminPanel');
+      const adminCityName = document.getElementById('adminCityName');
+      const adminStatus = document.getElementById('adminStatus');
+      const adminQueueName = document.getElementById('adminQueueName');
+      const adminNumberText = document.getElementById('adminNumberText');
+      const updateTimeText = document.getElementById('updateTimeText');
+      const decBtn = document.getElementById('decBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      const jumpInput = document.getElementById('jumpInput');
+      const jumpBtn = document.getElementById('jumpBtn');
+
+      // 设置城市名
+      loginTitle.textContent = cityName + ' · 管理员登录';
+      adminCityName.textContent = cityName;
+      adminQueueName.textContent = cityName;
+      passwordInput.placeholder = '请输入' + cityName + '管理密码';
+      document.title = cityName + ' - 叫号管理';
+
+      let ws = null;
+      let adminToken = null;
+
+      // ========== 登录 ==========
+      function doLogin() {
+        const pw = passwordInput.value.trim();
+        if (!pw) return;
+
+        loginHint.textContent = '验证中...';
+        loginHint.style.color = '#888';
+
+        fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pw, queue: queueId }),
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.ok) {
+              adminToken = data.token;
+              loginOverlay.style.display = 'none';
+              adminPanel.style.display = 'flex';
+              if (data.number !== undefined) {
+                adminNumberText.textContent = data.number;
+                updateTimestamp(data.last_updated);
+              }
+              connectWS();
+            } else {
+              loginHint.textContent = data.error || '密码错误';
+              loginHint.style.color = '#e74c3c';
+              passwordInput.value = '';
+              passwordInput.focus();
+            }
+          })
+          .catch(() => {
+            loginHint.textContent = '网络错误，请重试';
+            loginHint.style.color = '#e74c3c';
+          });
+      }
+
+      loginBtn.addEventListener('click', doLogin);
+      passwordInput.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+      // ========== WebSocket ==========
+      function connectWS() {
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(protocol + '//' + location.host + '/ws');
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ type: 'auth', token: adminToken, queue: queueId }));
+          adminStatus.textContent = '认证中...';
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'auth_ok') {
+              adminStatus.textContent = cityName + ' · 已接管控制';
+              adminStatus.style.color = '#27ae60';
+              if (msg.number !== undefined) {
+                adminNumberText.textContent = msg.number;
+                updateTimestamp(msg.last_updated);
+              }
+            } else if (msg.type === 'auth_err') {
+              adminStatus.textContent = '认证失败，请刷新重试';
+              adminStatus.style.color = '#e74c3c';
+            } else if (msg.type === 'number' && msg.queue === queueId) {
+              animateAdminNumber(msg.number);
+              updateTimestamp(msg.last_updated);
+            } else if (msg.type === 'kicked') {
+              alert(msg.reason || '控制权已被接管，页面将刷新');
+              location.reload();
+            }
+          } catch {}
+        };
+
+        ws.onclose = () => {
+          adminStatus.textContent = '连接断开，请刷新页面重连';
+          adminStatus.style.color = '#e74c3c';
+        };
+      }
+
+      function animateAdminNumber(num) {
+        const el = adminNumberText;
+        el.style.transform = 'scale(0.2)';
+        el.style.opacity = '0';
+        setTimeout(() => {
+          el.textContent = String(num);
+          el.style.transform = 'scale(1.2)';
+          el.style.opacity = '1';
+          setTimeout(() => { el.style.transform = 'scale(1)'; }, 150);
+        }, 150);
+      }
+
+      function updateTimestamp(ts) {
+        if (!ts) {
+          updateTimeText.textContent = '暂无记录';
+          return;
+        }
+        const d = new Date(ts * 1000);
+        const pad = n => String(n).padStart(2, '0');
+        updateTimeText.textContent =
+          pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+      }
+
+      // ========== 操作 ==========
+      function sendCmd(cmd) {
+        if (!ws || ws.readyState !== 1) {
+          alert('连接已断开，请刷新页面');
+          return;
+        }
+        ws.send(JSON.stringify({ ...cmd, queue: queueId }));
+      }
+
+      nextBtn.addEventListener('click', () => sendCmd({ type: 'inc' }));
+      decBtn.addEventListener('click', () => sendCmd({ type: 'dec' }));
+      resetBtn.addEventListener('click', () => {
+        if (confirm('确定要将 ' + cityName + ' 重置为 0 吗？')) {
+          sendCmd({ type: 'reset' });
+        }
+      });
+
+      jumpBtn.addEventListener('click', () => {
+        const n = parseInt(jumpInput.value, 10);
+        if (isNaN(n) || n < 0) { alert('请输入有效数字（>=0）'); return; }
+        sendCmd({ type: 'set', number: n });
+        jumpInput.value = '';
+      });
+      jumpInput.addEventListener('keydown', e => { if (e.key === 'Enter') jumpBtn.click(); });
+
+      // ========== 快捷键 ==========
+      document.addEventListener('keydown', (e) => {
+        if (loginOverlay.style.display !== 'none') return;
+        if (e.target.tagName === 'INPUT') return;
+        if (e.key === 'ArrowRight' || e.key === ' ') {
+          e.preventDefault(); sendCmd({ type: 'inc' });
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault(); sendCmd({ type: 'dec' });
+        } else if (e.key === 'r' && e.ctrlKey) {
+          e.preventDefault();
+          if (confirm('确定要将 ' + cityName + ' 重置为 0 吗？')) sendCmd({ type: 'reset' });
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

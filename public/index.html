@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>排队叫号</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container viewer" id="app">
+    <header>
+      <h1 id="cityName">--</h1>
+      <p class="subtitle">请留意屏幕，等待叫号</p>
+    </header>
+
+    <main>
+      <div class="number-stage">
+        <div class="number-display" id="numberDisplay">
+          <span class="number-text" id="numberText">--</span>
+        </div>
+      </div>
+
+      <div class="queue-label" id="queueLabel">--</div>
+
+      <!-- 最新更新时间 -->
+      <div class="update-time" id="updateTimeBlock">
+        <span>最后更新：</span>
+        <span id="updateTimeText">--</span>
+      </div>
+
+      <div class="status-bar">
+        <span class="status-dot" id="statusDot"></span>
+        <span class="status-label" id="statusLabel">连接中...</span>
+      </div>
+    </main>
+
+    <footer>
+      <p>请耐心等待 注意听叫号</p>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      const QUEUE_NAMES = { '1': '郑州', '2': '上海', '3': '成都', '4': '广州' };
+
+      // 从 URL 获取队列
+      const params = new URLSearchParams(location.search);
+      let queueId = params.get('queue') || '1';
+      if (!QUEUE_NAMES[queueId]) queueId = '1';
+
+      // DOM
+      const cityNameEl = document.getElementById('cityName');
+      const numberText = document.getElementById('numberText');
+      const numberDisplay = document.getElementById('numberDisplay');
+      const queueLabel = document.getElementById('queueLabel');
+      const updateTimeText = document.getElementById('updateTimeText');
+      const statusDot = document.getElementById('statusDot');
+      const statusLabel = document.getElementById('statusLabel');
+      const header = document.querySelector('header');
+
+      // 初始化标题
+      cityNameEl.textContent = QUEUE_NAMES[queueId];
+      queueLabel.textContent = QUEUE_NAMES[queueId];
+      document.title = QUEUE_NAMES[queueId] + ' - 排队叫号';
+
+      // 根据城市调整 header 装饰线颜色（微妙区分）
+      const cityColors = {'1':'#c0392b','2':'#c0392b','3':'#c0392b','4':'#c0392b'};
+
+      let ws = null;
+      let reconnectTimer = null;
+      let staleTimer = null;
+
+      function connect() {
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(protocol + '//' + location.host + '/ws');
+
+        ws.onopen = () => {
+          statusDot.className = 'status-dot connected';
+          statusLabel.textContent = '已连接 · 实时更新';
+          // 订阅所属队列
+          ws.send(JSON.stringify({ type: 'subscribe', queue: queueId }));
+          if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'number' && msg.queue === queueId) {
+              animateNumber(msg.number);
+              updateTimestamp(msg.last_updated);
+            }
+          } catch {}
+        };
+
+        ws.onclose = () => {
+          statusDot.className = 'status-dot disconnected';
+          statusLabel.textContent = '连接断开，重连中...';
+          scheduleReconnect();
+        };
+
+        ws.onerror = () => { ws.close(); };
+      }
+
+      function scheduleReconnect() {
+        if (reconnectTimer) return;
+        reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 2000);
+      }
+
+      function animateNumber(num) {
+        const old = numberText.textContent;
+        const next = String(num);
+        if (old === next) return;
+
+        numberDisplay.classList.add('pulse');
+        numberText.style.transform = 'scale(0.2)';
+        numberText.style.opacity = '0';
+
+        setTimeout(() => {
+          numberText.textContent = next;
+          numberText.style.transform = 'scale(1.2)';
+          numberText.style.opacity = '1';
+          setTimeout(() => {
+            numberText.style.transform = 'scale(1)';
+            numberDisplay.classList.remove('pulse');
+          }, 180);
+        }, 180);
+      }
+
+      function updateTimestamp(ts) {
+        if (!ts) {
+          updateTimeText.textContent = '暂无记录';
+          return;
+        }
+        const d = new Date(ts * 1000);
+        const pad = n => String(n).padStart(2, '0');
+        updateTimeText.textContent =
+          pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+
+        // 超过 5 分钟标红
+        clearTimeout(staleTimer);
+        const age = (Date.now() / 1000) - ts;
+        const block = document.getElementById('updateTimeBlock');
+        if (age > 300) {
+          block.classList.add('stale');
+        } else {
+          block.classList.remove('stale');
+          // 5 分钟后复查
+          staleTimer = setTimeout(() => {
+            const age2 = (Date.now() / 1000) - ts;
+            if (age2 > 300) block.classList.add('stale');
+          }, (301 - age) * 1000);
+        }
+      }
+
+      // 页面可见性变化
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          if (!ws || ws.readyState > 1) connect();
+          // 醒过来后重新检查时间戳是否过时
+          if (numberText.textContent !== '--') {
+            // 不做额外操作，等待下次消息
+          }
+        }
+      });
+
+      connect();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>监控总览 — 四城叫号</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container monitor" id="app">
+    <header>
+      <h1>四城叫号监控</h1>
+      <p class="subtitle">郑州 · 上海 · 成都 · 广州  实时总览</p>
+    </header>
+
+    <main>
+      <div class="all-queues" id="allQueues">
+        <div class="queue-mini-card" data-queue="1">
+          <div class="mini-label">郑州</div>
+          <div class="mini-number"><span id="miniNum1">--</span></div>
+          <div class="mini-time" id="miniTime1">--</div>
+        </div>
+        <div class="queue-mini-card" data-queue="2">
+          <div class="mini-label">上海</div>
+          <div class="mini-number"><span id="miniNum2">--</span></div>
+          <div class="mini-time" id="miniTime2">--</div>
+        </div>
+        <div class="queue-mini-card" data-queue="3">
+          <div class="mini-label">成都</div>
+          <div class="mini-number"><span id="miniNum3">--</span></div>
+          <div class="mini-time" id="miniTime3">--</div>
+        </div>
+        <div class="queue-mini-card" data-queue="4">
+          <div class="mini-label">广州</div>
+          <div class="mini-number"><span id="miniNum4">--</span></div>
+          <div class="mini-time" id="miniTime4">--</div>
+        </div>
+      </div>
+
+      <div class="status-bar">
+        <span class="status-dot" id="statusDot"></span>
+        <span class="status-label" id="statusLabel">连接中...</span>
+      </div>
+    </main>
+
+    <footer>
+      <p>管理人员监控面板</p>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      const statusDot = document.getElementById('statusDot');
+      const statusLabel = document.getElementById('statusLabel');
+
+      let ws = null;
+      let reconnectTimer = null;
+      const staleTimers = {};
+
+      function connect() {
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(protocol + '//' + location.host + '/ws');
+
+        ws.onopen = () => {
+          statusDot.className = 'status-dot connected';
+          statusLabel.textContent = '已连接 · 实时监控';
+          ws.send(JSON.stringify({ type: 'subscribe', queue: 'all' }));
+          if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'number') {
+              updateCard(msg.queue, msg.number, msg.last_updated);
+            }
+
+            if (msg.type === 'all_numbers') {
+              for (const [q, info] of Object.entries(msg.queues)) {
+                updateCard(q, info.number, info.last_updated);
+              }
+            }
+          } catch {}
+        };
+
+        ws.onclose = () => {
+          statusDot.className = 'status-dot disconnected';
+          statusLabel.textContent = '连接断开，重连中...';
+          scheduleReconnect();
+        };
+
+        ws.onerror = () => { ws.close(); };
+      }
+
+      function scheduleReconnect() {
+        if (reconnectTimer) return;
+        reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 2000);
+      }
+
+      function updateCard(q, num, ts) {
+        const numEl = document.getElementById('miniNum' + q);
+        const timeEl = document.getElementById('miniTime' + q);
+        if (numEl) numEl.textContent = num;
+        if (timeEl && ts) {
+          const d = new Date(ts * 1000);
+          const pad = n => String(n).padStart(2, '0');
+          timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+
+          // 过期高亮
+          const card = timeEl.closest('.queue-mini-card');
+          const age = (Date.now() / 1000) - ts;
+          clearTimeout(staleTimers[q]);
+          if (age > 300) {
+            card.classList.add('stale-card');
+          } else {
+            card.classList.remove('stale-card');
+            staleTimers[q] = setTimeout(() => {
+              const age2 = (Date.now() / 1000) - ts;
+              if (age2 > 300) card.classList.add('stale-card');
+            }, (301 - age) * 1000);
+          }
+        }
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          if (!ws || ws.readyState > 1) connect();
+        }
+      });
+
+      connect();
+    })();
+  </script>
+</body>
+</html>

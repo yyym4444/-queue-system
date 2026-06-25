@@ -23,11 +23,6 @@
 
       <div class="queue-label" id="queueLabel">--</div>
 
-      <!-- 叫号区间 -->
-      <div class="range-display" id="rangeDisplay" style="display:none;">
-        <span class="range-text" id="rangeText"></span>
-      </div>
-
       <div class="update-time" id="updateTimeBlock">
         <span>最后更新：</span>
         <span id="updateTimeText">--</span>
@@ -58,14 +53,12 @@
       const updateTimeText = document.getElementById('updateTimeText');
       const statusDot = document.getElementById('statusDot');
       const statusLabel = document.getElementById('statusLabel');
-      const rangeDisplay = document.getElementById('rangeDisplay');
-      const rangeText = document.getElementById('rangeText');
 
       cityNameEl.textContent = QUEUE_NAMES[queueId];
       queueLabel.textContent = QUEUE_NAMES[queueId];
       document.title = QUEUE_NAMES[queueId] + ' - 排队叫号';
 
-      let lastNumber = null;
+      let lastDisplay = null;
       let staleTimer = null;
 
       // ===== HTTP 轮询：每 2 秒获取最新号码（主力）=====
@@ -75,16 +68,13 @@
           .then(data => {
             statusDot.className = 'status-dot connected';
             statusLabel.textContent = '已连接';
-            if (lastNumber !== data.number) {
-              lastNumber = data.number;
-              animateNumber(data.number);
-            }
-            // 显示叫号区间
-            if (data.range_start > 0 && data.range_end > 0) {
-              rangeDisplay.style.display = 'block';
-              rangeText.textContent = data.range_start + ' - ' + data.range_end + ' 号';
-            } else {
-              rangeDisplay.style.display = 'none';
+            // 主显示叫号区间
+            const display = (data.range_start > 0 && data.range_end > 0)
+              ? (data.range_start + '-' + data.range_end)
+              : String(data.number);
+            if (lastDisplay !== display) {
+              lastDisplay = display;
+              animateDisplay(display);
             }
             updateTimestamp(data.last_updated);
           })
@@ -94,15 +84,13 @@
           });
       }
 
-      function animateNumber(num) {
-        const old = numberText.textContent;
-        const next = String(num);
-        if (old === next) return;
+      function animateDisplay(text) {
         numberDisplay.classList.add('pulse');
         numberText.style.transform = 'scale(0.2)';
         numberText.style.opacity = '0';
         setTimeout(() => {
-          numberText.textContent = next;
+          numberText.textContent = text;
+          numberText.style.fontSize = text.length > 4 ? '40px' : '64px';
           numberText.style.transform = 'scale(1.2)';
           numberText.style.opacity = '1';
           setTimeout(() => {

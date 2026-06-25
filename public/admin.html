@@ -56,28 +56,19 @@
       <!-- 简单状态 — 手机用户只需要知道"能不能操作" -->
       <div class="status-simple" id="statusSimple"></div>
 
-      <!-- 控制按钮 — 超大尺寸适配手指 -->
-      <div class="admin-controls">
-        <button class="ctrl-btn dec-btn" id="decBtn">- 叫号</button>
-        <button class="ctrl-btn next-btn" id="nextBtn">+ 下一号</button>
-        <button class="ctrl-btn reset-btn" id="resetBtn">重置</button>
-      </div>
-
-      <!-- 批量叫号 — 设置区间 -->
-      <div class="quick-jump" style="margin-top:20px;">
-        <input type="number" id="rangeStart" placeholder="起始号" min="0" inputmode="numeric" pattern="[0-9]*" style="width:100px;">
-        <span style="font-size:20px;font-weight:bold;padding:0 4px;">-</span>
-        <input type="number" id="rangeEnd" placeholder="截止号" min="0" inputmode="numeric" pattern="[0-9]*" style="width:100px;">
-        <button class="ctrl-btn jump-btn" id="rangeBtn" style="font-size:14px;padding:14px 16px;">设置区间</button>
+      <!-- 批量叫号 — 仅此功能 -->
+      <div style="margin-top:28px;text-align:center;">
+        <div style="display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;">
+          <input type="number" id="rangeStart" placeholder="起始号" min="0" inputmode="numeric" pattern="[0-9]*" style="width:120px;padding:16px;font-size:18px;border:2px solid var(--pink-light);border-radius:16px;text-align:center;">
+          <span style="font-size:22px;font-weight:bold;color:var(--black);">—</span>
+          <input type="number" id="rangeEnd" placeholder="截止号" min="0" inputmode="numeric" pattern="[0-9]*" style="width:120px;padding:16px;font-size:18px;border:2px solid var(--pink-light);border-radius:16px;text-align:center;">
+        </div>
+        <button class="ctrl-btn next-btn" id="rangeBtn" style="margin-top:20px;width:100%;max-width:300px;font-size:20px;padding:18px;">确认叫号</button>
       </div>
 
       <!-- 当前区间提示 -->
-      <div id="rangeInfo" style="text-align:center;margin-top:8px;font-size:13px;color:#888;display:none;"></div>
-
-      <!-- 快速跳转 -->
-      <div class="quick-jump" style="margin-top:10px;">
-        <input type="number" id="jumpInput" placeholder="输入号码" min="0" inputmode="numeric" pattern="[0-9]*">
-        <button class="ctrl-btn jump-btn" id="jumpBtn">跳转</button>
+      <div class="range-display" id="rangeInfo" style="margin-top:16px;display:none;">
+        <span class="range-text" id="rangeInfoText" style="font-size:18px;font-weight:900;color:var(--red);background:var(--pink-lighter);padding:8px 24px;border-radius:12px;border:2px solid var(--pink-light);"></span>
       </div>
     </main>
   </div>
@@ -106,15 +97,11 @@
       const adminNumberText = document.getElementById('adminNumberText');
       const updateTimeText = document.getElementById('updateTimeText');
       const statusSimple = document.getElementById('statusSimple');
-      const decBtn = document.getElementById('decBtn');
-      const nextBtn = document.getElementById('nextBtn');
-      const resetBtn = document.getElementById('resetBtn');
-      const jumpInput = document.getElementById('jumpInput');
-      const jumpBtn = document.getElementById('jumpBtn');
       const rangeStart = document.getElementById('rangeStart');
       const rangeEnd = document.getElementById('rangeEnd');
       const rangeBtn = document.getElementById('rangeBtn');
       const rangeInfo = document.getElementById('rangeInfo');
+      const rangeInfoText = document.getElementById('rangeInfoText');
 
       // 设置城市名
       loginTitle.textContent = cityName + ' · 管理员登录';
@@ -222,10 +209,18 @@
         fetch('/api/number?queue=' + queueId)
           .then(r => r.json())
           .then(data => {
-            animateAdminNumber(data.number);
-            updateTimestamp(data.last_updated);
             curRangeStart = data.range_start || 0;
             curRangeEnd = data.range_end || 0;
+            // 有区间时显示区间，无区间时显示单个号码
+            if (curRangeStart > 0 && curRangeEnd > 0) {
+              adminNumberText.textContent = curRangeStart + '-' + curRangeEnd;
+              adminNumberText.style.fontSize = '36px';
+            } else {
+              adminNumberText.textContent = data.number;
+              adminNumberText.style.fontSize = '52px';
+            }
+            updateTimestamp(data.last_updated);
+            updateRangeInfo();
             updateRangeInfo();
             if (wsReady) {
               statusSimple.textContent = '实时连接中';
@@ -317,19 +312,16 @@
       function updateRangeInfo() {
         if (curRangeStart > 0 && curRangeEnd > 0) {
           rangeInfo.style.display = 'block';
-          rangeInfo.textContent = '当前区间: ' + curRangeStart + ' - ' + curRangeEnd + ' 号';
-          rangeInfo.style.color = '#c0392b';
-          rangeInfo.style.fontWeight = 'bold';
-          rangeStart.value = curRangeStart;
-          rangeEnd.value = curRangeEnd;
+          rangeInfoText.textContent = curRangeStart + ' — ' + curRangeEnd + ' 号';
+          rangeStart.placeholder = curRangeStart;
+          rangeEnd.placeholder = curRangeEnd;
         } else {
           rangeInfo.style.display = 'none';
         }
       }
 
       function updateWebButtons(ready) {
-        const btns = [decBtn, nextBtn, resetBtn, jumpBtn, rangeBtn];
-        btns.forEach(b => { if (b) b.style.opacity = ready ? '1' : '0.7'; });
+        rangeBtn.style.opacity = ready ? '1' : '0.7';
       }
 
       function updateTimestamp(ts) {
@@ -339,72 +331,40 @@
         updateTimeText.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
       }
 
-      function animateAdminNumber(num) {
-        const old = adminNumberText.textContent;
-        if (old === String(num)) return;
-        adminNumberText.textContent = num;
-      }
-
-      // ===== 核心操作 — 始终走 HTTP =====
+      // ===== 核心操作 — 区间叫号 =====
       function sendCmd(cmd) {
         const now = Date.now();
-        if (now - lastCmdTime < 200) return;  // 防连点
+        if (now - lastCmdTime < 300) return;
         lastCmdTime = now;
 
-        // 乐观更新：先改本地显示
-        if (cmd.type === 'inc') adminNumberText.textContent = parseInt(adminNumberText.textContent || 0) + 1;
-        else if (cmd.type === 'dec') adminNumberText.textContent = Math.max(0, parseInt(adminNumberText.textContent || 0) - 1);
-        else if (cmd.type === 'reset') adminNumberText.textContent = 0;
-
-        // HTTP 请求
         fetch('/api/admin/control', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: adminToken, queue: queueId, type: cmd.type, number: cmd.number,
+          body: JSON.stringify({ token: adminToken, queue: queueId, type: cmd.type,
                                  range_start: cmd.range_start, range_end: cmd.range_end }),
         })
           .then(r => r.json())
           .then(data => {
             if (data.ok) {
-              adminNumberText.textContent = data.number;
+              adminNumberText.textContent = data.range_start + ' — ' + data.range_end;
               updateTimestamp(data.last_updated);
               curRangeStart = data.range_start || 0;
               curRangeEnd = data.range_end || 0;
               updateRangeInfo();
-              statusSimple.textContent = '操作成功';
-              setTimeout(() => { statusSimple.textContent = wsReady ? '实时连接中' : '轮询模式'; }, 800);
+              statusSimple.textContent = '叫号成功';
+              setTimeout(() => { statusSimple.textContent = wsReady ? '实时连接中' : '轮询模式'; }, 1000);
             } else if (data.error === '认证失败') {
               reLogin();
             } else {
               statusSimple.textContent = '操作失败，请重试';
-              // 回滚到服务器数据
-              fetch('/api/number?queue=' + queueId).then(r => r.json()).then(d => {
-                adminNumberText.textContent = d.number;
-                updateTimestamp(d.last_updated);
-              });
             }
           })
           .catch(() => {
-            statusSimple.textContent = '网络错误，正在重试...';
-            // 1 秒后重试
-            setTimeout(() => sendCmd(cmd), 1000);
+            statusSimple.textContent = '网络错误，请重试';
           });
       }
 
-      nextBtn.addEventListener('click', () => sendCmd({ type: 'inc' }));
-      decBtn.addEventListener('click', () => sendCmd({ type: 'dec' }));
-      resetBtn.addEventListener('click', () => {
-        if (confirm('确定要将 ' + cityName + ' 重置为 0 吗？')) sendCmd({ type: 'reset' });
-      });
-      jumpBtn.addEventListener('click', () => {
-        const n = parseInt(jumpInput.value, 10);
-        if (isNaN(n) || n < 0) { alert('请输入有效数字（≥0）'); return; }
-        sendCmd({ type: 'set', number: n });
-        jumpInput.value = '';
-      });
-      jumpInput.addEventListener('keydown', e => { if (e.key === 'Enter') jumpBtn.click(); });
-
-      // 区间设置按钮
+      // 区间叫号按钮
       rangeBtn.addEventListener('click', () => {
         const s = parseInt(rangeStart.value, 10);
         const e = parseInt(rangeEnd.value, 10);
@@ -413,7 +373,10 @@
           return;
         }
         sendCmd({ type: 'range_set', range_start: s, range_end: e });
+        rangeStart.value = '';
+        rangeEnd.value = '';
       });
+      rangeEnd.addEventListener('keydown', e => { if (e.key === 'Enter') rangeBtn.click(); });
 
       // ===== 页面可见性 =====
       document.addEventListener('visibilitychange', () => {

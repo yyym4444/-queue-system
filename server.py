@@ -100,17 +100,28 @@ async def _kick(ws):
 # ============================================================
 #  HTTP 路由
 # ============================================================
+_CACHE_CTRL = {"Cache-Control": "public, max-age=300"}
+
 async def index_handler(request: web.Request):
-    return web.FileResponse(PUBLIC / "index.html", headers={"Content-Type": "text/html; charset=utf-8"})
+    fp = PUBLIC / "index.html"
+    bs = fp.read_bytes()
+    return web.Response(body=bs, content_type="text/html", charset="utf-8", headers=_CACHE_CTRL)
 
 async def monitor_handler(request: web.Request):
-    return web.FileResponse(PUBLIC / "monitor.html", headers={"Content-Type": "text/html; charset=utf-8"})
+    fp = PUBLIC / "monitor.html"
+    bs = fp.read_bytes()
+    return web.Response(body=bs, content_type="text/html", charset="utf-8", headers=_CACHE_CTRL)
 
 async def admin_handler(request: web.Request):
-    return web.FileResponse(PUBLIC / "admin.html", headers={"Content-Type": "text/html; charset=utf-8"})
+    fp = PUBLIC / "admin.html"
+    bs = fp.read_bytes()
+    return web.Response(body=bs, content_type="text/html", charset="utf-8", headers=_CACHE_CTRL)
 
 async def css_handler(request: web.Request):
-    return web.FileResponse(PUBLIC / "style.css", headers={"Content-Type": "text/css; charset=utf-8"})
+    return web.FileResponse(PUBLIC / "style.css", headers={
+        "Content-Type": "text/css; charset=utf-8",
+        "Cache-Control": "public, max-age=86400",
+    })
 
 async def health_handler(request: web.Request):
     """健康检查 — 供监控系统使用"""
@@ -384,7 +395,10 @@ def main():
         print(f"       {QUEUE_NAMES[q]} (queue={q})  号码:{queues_data[q]['number']}  密码:{'*' * len(pinfo)}")
     print(f"       监控总览 -> http://localhost:{PORT}/monitor")
 
-    web.run_app(app, host="0.0.0.0", port=PORT)
+    web.run_app(app, host="0.0.0.0", port=PORT,
+                access_log=None,  # 关闭访问日志减少 I/O
+                backlog=2048,     # 增大连接队列
+                )
 
 if __name__ == "__main__":
     main()

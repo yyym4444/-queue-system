@@ -59,7 +59,7 @@
           .then(r => r.json())
           .then(data => {
             for (const [q, info] of Object.entries(data)) {
-              updateCard(q, info.number, info.last_updated);
+              updateCard(q, info);
             }
             statusDot.className = 'status-dot connected';
             statusLabel.textContent = '已连接 · 实时监控';
@@ -70,10 +70,20 @@
           });
       }
 
-      function updateCard(q, num, ts) {
+      function updateCard(q, info) {
+        const num = info.number;
+        const ts = info.last_updated;
+        const rs = info.range_start || 0;
+        const re = info.range_end || 0;
         const numEl = document.getElementById('miniNum' + q);
         const timeEl = document.getElementById('miniTime' + q);
-        if (numEl) numEl.textContent = num;
+        if (numEl) {
+          if (rs > 0 && re > 0) {
+            numEl.innerHTML = '<span style="font-size:16px;font-weight:900;color:#fff;">' + rs + '-' + re + '</span>';
+          } else {
+            numEl.innerHTML = '<span>' + num + '</span>';
+          }
+        }
         if (timeEl && ts) {
           const d = new Date(ts * 1000);
           const pad = n => String(n).padStart(2, '0');

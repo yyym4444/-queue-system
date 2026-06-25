@@ -32,9 +32,16 @@ def load_all():
     try:
         data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         qs = data.get("queues", {})
-        return {q: qs.get(q, {"number": 0, "last_updated": None}) for q in QUEUE_IDS}
+        result = {}
+        for q in QUEUE_IDS:
+            cur = qs.get(q, {"number": 0, "last_updated": None})
+            # 兼容旧数据：没有 range 字段时默认为 0（不显示区间）
+            cur.setdefault("range_start", 0)
+            cur.setdefault("range_end", 0)
+            result[q] = cur
+        return result
     except Exception:
-        return {q: {"number": 0, "last_updated": None} for q in QUEUE_IDS}
+        return {q: {"number": 0, "last_updated": None, "range_start": 0, "range_end": 0} for q in QUEUE_IDS}
 
 def save_all(queues: dict):
     STATE_FILE.write_text(json.dumps({"queues": queues}), encoding="utf-8")
@@ -59,6 +66,7 @@ async def broadcast_queue(queue_id: str):
     msg = json.dumps({
         "type": "number", "queue": queue_id,
         "number": qd["number"],
+        "range_start": qd["range_start"], "range_end": qd["range_end"],
         "last_updated": qd["last_updated"],
     })
     dead = []
@@ -77,10 +85,13 @@ async def send_to_admin(queue_id: str):
     ws = admin_state[queue_id]["ws"]
     if ws and not ws.closed:
         try:
+            qd = queues_data[queue_id]
             await ws.send_str(json.dumps({
                 "type": "number", "queue": queue_id,
-                "number": queues_data[queue_id]["number"],
-                "last_updated": queues_data[queue_id]["last_updated"],
+                "number": qd["number"],
+                "range_start": qd["range_start"],
+                "range_end": qd["range_end"],
+                "last_updated": qd["last_updated"],
             }))
         except Exception:
             admin_state[queue_id]["ws"] = None
@@ -136,16 +147,21 @@ async def api_get_number(request: web.Request):
     if q not in QUEUE_IDS:
         q = "1"
     qd = queues_data[q]
-    return web.json_response({"queue": q, "name": QUEUE_NAMES[q], "number": qd["number"], "last_updated": qd["last_updated"]})
+    return web.json_response({"queue": q, "name": QUEUE_NAMES[q], "number": qd["number"],
+                              "range_start": qd["range_start"], "range_end": qd["range_end"],
+                              "last_updated": qd["last_updated"]})
 
 async def api_get_all(request: web.Request):
     """获取全部四队列状态（监控页用）"""
     result = {}
     for q in QUEUE_IDS:
+        qd = queues_data[q]
         result[q] = {
             "name": QUEUE_NAMES[q],
-            "number": queues_data[q]["number"],
-            "last_updated": queues_data[q]["last_updated"],
+            "number": qd["number"],
+            "range_start": qd["range_start"],
+            "range_end": qd["range_end"],
+            "last_updated": qd["last_updated"],
         }
     return web.json_response(result)
 
@@ -171,6 +187,8 @@ async def api_admin_login(request: web.Request):
         "ok": True, "token": token,
         "queue": q, "name": QUEUE_NAMES[q],
         "number": qd["number"],
+        "range_start": qd["range_start"],
+        "range_end": qd["range_end"],
         "last_updated": qd["last_updated"],
     })
 
@@ -205,15 +223,27 @@ async def api_admin_control(request: web.Request):
             changed = True
     elif msg_type == "reset":
         queues_data[q]["number"] = 0
+        queues_data[q]["range_start"] = 0
+        queues_data[q]["range_end"] = 0
         changed = True
+    elif msg_type == "range_set":
+        s = body.get("range_start")
+        e = body.get("range_end")
+        if isinstance(s, int) and isinstance(e, int) and 0 <= s <= e:
+            queues_data[q]["range_start"] = s
+            queues_data[q]["range_end"] = e
+            queues_data[q]["number"] = s  # 当前号码跳到区间起点
+            changed = True
 
     if changed:
         queues_data[q]["last_updated"] = int(time.time())
         save_all(queues_data)
         asyncio.create_task(broadcast_queue(q))
+        qd = queues_data[q]
         return web.json_response({
-            "ok": True, "queue": q, "number": queues_data[q]["number"],
-            "last_updated": queues_data[q]["last_updated"],
+            "ok": True, "queue": q, "number": qd["number"],
+            "range_start": qd["range_start"], "range_end": qd["range_end"],
+            "last_updated": qd["last_updated"],
         })
 
     return web.json_response({"ok": False, "error": "无效操作或号码未变"})
@@ -249,10 +279,13 @@ async def ws_handler(request: web.Request):
                                 viewers[q].append(ws)
                         result = {}
                         for q in QUEUE_IDS:
+                            qd = queues_data[q]
                             result[q] = {
                                 "name": QUEUE_NAMES[q],
-                                "number": queues_data[q]["number"],
-                                "last_updated": queues_data[q]["last_updated"],
+                                "number": qd["number"],
+                                "range_start": qd["range_start"],
+                                "range_end": qd["range_end"],
+                                "last_updated": qd["last_updated"],
                             }
                         await ws.send_str(json.dumps({"type": "all_numbers", "queues": result}))
                     elif qid in QUEUE_IDS and qid not in subscribed:
@@ -262,6 +295,8 @@ async def ws_handler(request: web.Request):
                         await ws.send_str(json.dumps({
                             "type": "number", "queue": qid,
                             "number": qd["number"],
+                            "range_start": qd["range_start"],
+                            "range_end": qd["range_end"],
                             "last_updated": qd["last_updated"],
                         }))
 
@@ -290,6 +325,8 @@ async def ws_handler(request: web.Request):
                             "type": "auth_ok",
                             "queue": qid, "name": QUEUE_NAMES[qid],
                             "number": qd["number"],
+                            "range_start": qd["range_start"],
+                            "range_end": qd["range_end"],
                             "last_updated": qd["last_updated"],
                         }))
                     else:
@@ -314,7 +351,17 @@ async def ws_handler(request: web.Request):
                         changed = True
                 elif msg_type == "reset":
                     queues_data[qid]["number"] = 0
+                    queues_data[qid]["range_start"] = 0
+                    queues_data[qid]["range_end"] = 0
                     changed = True
+                elif msg_type == "range_set":
+                    s = data.get("range_start")
+                    e = data.get("range_end")
+                    if isinstance(s, int) and isinstance(e, int) and 0 <= s <= e:
+                        queues_data[qid]["range_start"] = s
+                        queues_data[qid]["range_end"] = e
+                        queues_data[qid]["number"] = s
+                        changed = True
 
                 if changed:
                     queues_data[qid]["last_updated"] = int(time.time())

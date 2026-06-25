@@ -23,6 +23,11 @@
 
       <div class="queue-label" id="queueLabel">--</div>
 
+      <!-- 叫号区间 -->
+      <div class="range-display" id="rangeDisplay" style="display:none;">
+        <span class="range-text" id="rangeText"></span>
+      </div>
+
       <div class="update-time" id="updateTimeBlock">
         <span>最后更新：</span>
         <span id="updateTimeText">--</span>
@@ -53,6 +58,8 @@
       const updateTimeText = document.getElementById('updateTimeText');
       const statusDot = document.getElementById('statusDot');
       const statusLabel = document.getElementById('statusLabel');
+      const rangeDisplay = document.getElementById('rangeDisplay');
+      const rangeText = document.getElementById('rangeText');
 
       cityNameEl.textContent = QUEUE_NAMES[queueId];
       queueLabel.textContent = QUEUE_NAMES[queueId];
@@ -71,6 +78,13 @@
             if (lastNumber !== data.number) {
               lastNumber = data.number;
               animateNumber(data.number);
+            }
+            // 显示叫号区间
+            if (data.range_start > 0 && data.range_end > 0) {
+              rangeDisplay.style.display = 'block';
+              rangeText.textContent = data.range_start + ' - ' + data.range_end + ' 号';
+            } else {
+              rangeDisplay.style.display = 'none';
             }
             updateTimestamp(data.last_updated);
           })

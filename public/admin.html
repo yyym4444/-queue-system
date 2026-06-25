@@ -63,8 +63,19 @@
         <button class="ctrl-btn reset-btn" id="resetBtn">重置</button>
       </div>
 
+      <!-- 批量叫号 — 设置区间 -->
+      <div class="quick-jump" style="margin-top:20px;">
+        <input type="number" id="rangeStart" placeholder="起始号" min="0" inputmode="numeric" pattern="[0-9]*" style="width:100px;">
+        <span style="font-size:20px;font-weight:bold;padding:0 4px;">-</span>
+        <input type="number" id="rangeEnd" placeholder="截止号" min="0" inputmode="numeric" pattern="[0-9]*" style="width:100px;">
+        <button class="ctrl-btn jump-btn" id="rangeBtn" style="font-size:14px;padding:14px 16px;">设置区间</button>
+      </div>
+
+      <!-- 当前区间提示 -->
+      <div id="rangeInfo" style="text-align:center;margin-top:8px;font-size:13px;color:#888;display:none;"></div>
+
       <!-- 快速跳转 -->
-      <div class="quick-jump">
+      <div class="quick-jump" style="margin-top:10px;">
         <input type="number" id="jumpInput" placeholder="输入号码" min="0" inputmode="numeric" pattern="[0-9]*">
         <button class="ctrl-btn jump-btn" id="jumpBtn">跳转</button>
       </div>
@@ -100,6 +111,10 @@
       const resetBtn = document.getElementById('resetBtn');
       const jumpInput = document.getElementById('jumpInput');
       const jumpBtn = document.getElementById('jumpBtn');
+      const rangeStart = document.getElementById('rangeStart');
+      const rangeEnd = document.getElementById('rangeEnd');
+      const rangeBtn = document.getElementById('rangeBtn');
+      const rangeInfo = document.getElementById('rangeInfo');
 
       // 设置城市名
       loginTitle.textContent = cityName + ' · 管理员登录';
@@ -115,6 +130,8 @@
       let wsReady = false;
       let pollTimer = null;
       let lastCmdTime = 0;
+      let curRangeStart = 0;
+      let curRangeEnd = 0;
 
       // ===== 初始化：尝试从 localStorage 恢复登录 =====
       function tryRestore() {
@@ -207,6 +224,9 @@
           .then(data => {
             animateAdminNumber(data.number);
             updateTimestamp(data.last_updated);
+            curRangeStart = data.range_start || 0;
+            curRangeEnd = data.range_end || 0;
+            updateRangeInfo();
             if (wsReady) {
               statusSimple.textContent = '实时连接中';
             } else {
@@ -234,6 +254,9 @@
             if (msg.type === 'auth_ok') {
               wsReady = true;
               statusSimple.textContent = '实时连接中';
+              curRangeStart = msg.range_start || 0;
+              curRangeEnd = msg.range_end || 0;
+              updateRangeInfo();
             } else if (msg.type === 'auth_err') {
               wsReady = false;
               // token 失效，静默重新登录
@@ -242,6 +265,9 @@
             } else if (msg.type === 'number' && msg.queue === queueId) {
               animateAdminNumber(msg.number);
               updateTimestamp(msg.last_updated);
+              curRangeStart = msg.range_start || 0;
+              curRangeEnd = msg.range_end || 0;
+              updateRangeInfo();
               statusSimple.textContent = '实时连接中';
             } else if (msg.type === 'kicked') {
               alert(msg.reason || '控制权已被接管');
@@ -288,9 +314,21 @@
       }
 
       // ===== UI 辅助 =====
+      function updateRangeInfo() {
+        if (curRangeStart > 0 && curRangeEnd > 0) {
+          rangeInfo.style.display = 'block';
+          rangeInfo.textContent = '当前区间: ' + curRangeStart + ' - ' + curRangeEnd + ' 号';
+          rangeInfo.style.color = '#c0392b';
+          rangeInfo.style.fontWeight = 'bold';
+          rangeStart.value = curRangeStart;
+          rangeEnd.value = curRangeEnd;
+        } else {
+          rangeInfo.style.display = 'none';
+        }
+      }
+
       function updateWebButtons(ready) {
-        // 按钮始终可用（走 HTTP），只是视觉上区分
-        const btns = [decBtn, nextBtn, resetBtn, jumpBtn];
+        const btns = [decBtn, nextBtn, resetBtn, jumpBtn, rangeBtn];
         btns.forEach(b => { if (b) b.style.opacity = ready ? '1' : '0.7'; });
       }
 
@@ -322,13 +360,17 @@
         fetch('/api/admin/control', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: adminToken, queue: queueId, type: cmd.type, number: cmd.number }),
+          body: JSON.stringify({ token: adminToken, queue: queueId, type: cmd.type, number: cmd.number,
+                                 range_start: cmd.range_start, range_end: cmd.range_end }),
         })
           .then(r => r.json())
           .then(data => {
             if (data.ok) {
               adminNumberText.textContent = data.number;
               updateTimestamp(data.last_updated);
+              curRangeStart = data.range_start || 0;
+              curRangeEnd = data.range_end || 0;
+              updateRangeInfo();
               statusSimple.textContent = '操作成功';
               setTimeout(() => { statusSimple.textContent = wsReady ? '实时连接中' : '轮询模式'; }, 800);
             } else if (data.error === '认证失败') {
@@ -361,6 +403,17 @@
         jumpInput.value = '';
       });
       jumpInput.addEventListener('keydown', e => { if (e.key === 'Enter') jumpBtn.click(); });
+
+      // 区间设置按钮
+      rangeBtn.addEventListener('click', () => {
+        const s = parseInt(rangeStart.value, 10);
+        const e = parseInt(rangeEnd.value, 10);
+        if (isNaN(s) || isNaN(e) || s < 0 || e < 0 || s > e) {
+          alert('请输入有效的区间（起始 ≤ 截止，且均 ≥ 0）');
+          return;
+        }
+        sendCmd({ type: 'range_set', range_start: s, range_end: e });
+      });
 
       // ===== 页面可见性 =====
       document.addEventListener('visibilitychange', () => {

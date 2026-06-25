@@ -243,9 +243,32 @@ header h1 {
   letter-spacing: 3px;
   text-align: center;
   background: var(--pink-lighter);
-  display: inline-block;
+  display: block;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
   padding: 6px 20px;
   border-radius: 20px;
+}
+
+/* ============================================================
+   叫号区间显示
+   ============================================================ */
+.range-display {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.range-text {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--red);
+  letter-spacing: 4px;
+  background: var(--pink-lighter);
+  padding: 8px 24px;
+  border-radius: 16px;
+  display: inline-block;
+  border: 2px solid var(--pink-light);
 }
 
 /* ============================================================
